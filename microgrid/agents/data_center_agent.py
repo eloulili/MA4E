@@ -2,6 +2,10 @@ import datetime
 from microgrid.environments.data_center.data_center_env import DataCenterEnv
 
 
+import pandas as pd
+from pulp import *
+import numpy as np
+
 class DataCenterAgent:
     def __init__(self, env: DataCenterEnv):
         self.env = env
@@ -11,6 +15,39 @@ class DataCenterAgent:
                       previous_state=None,
                       previous_action=None,
                       previous_reward=None):
+            l_IT = np.array([l_IT_global[i + time]] for i in range(
+                24))  # on étudie le scénario à partir de la consommation minimale entre t et t+24h
+            lambdas = self.env.get_prices_prevision()
+            problem = LpProblem("data_center", LpMinimize)
+            alphas = [0 for i in range(self.env.nb_pdt)]
+            alpha = [0 for i in range(self.env.nb_pdt)]
+            LI = [0 for i in range(self.env.nb_pdt)]
+            for i in range(24):
+                var_name = "alpha_" + str(i)
+                alphas[i] = LpVariable(var_name, 0.0, 1.0)
+
+            l_NF = [0 for i in range(self.env.nb_pdt)]
+            h_r = [0 for i in range(self.env.nb_pdt)]
+            l_HP = [0 for i in range(self.env.nb_pdt)]
+            h_DC = [0 for i in range(self.env.nb_pdt)]
+            li = [0 for i in range(self.env.nb_pdt)]
+
+            for t in range(self.env.horizon):
+                l_NF[t] = (1 + 1 / (self.env.EER * self.env.delta_t)) * l_IT[t]
+                h_r[t] = l_IT[t] * self.env.COP_CS / self.env.EER
+                l_HP[t] = alphas[t] * h_r[t] / ((self.env.COP_HP - 1) * dt)
+                h_DC[t] = self.env.COP_HP * self.env.delta_t * l_HP[t]
+                cons_name = "production limite en " + str(t)
+                problem += h_DC[t] <= self.env.max_transfert
+                li[t] = l_HP[t] + l_NF[t]
+
+            problem += np.sum([lambdas[i] * (l_NF[i] + h_DC[i]) - self.env.hotwater_price_prevision[i] * h_DC[i] for i in
+                               range(self.env.nb_pdt)]), "objectif"
+
+            problem.solve()
+            for i in range(48):
+                alpha[i] = alphas[i].value()
+            self.env.action_space = alpha
         return self.env.action_space.sample()
 
 
