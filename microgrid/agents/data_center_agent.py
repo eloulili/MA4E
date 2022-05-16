@@ -16,10 +16,9 @@ class DataCenterAgent:
                       previous_state=None,
                       previous_action=None,
                       previous_reward=None):
-            l_IT = np.array([self.Dt.data[i+ self.env.now]] for i in range(
-                self.env.nb_pdt))  # on étudie le scénario à partir de la consommation minimale entre t et t+24h
-            lambdas = self.env.observation_space["manager_signal"]
-            phw = self.Dt.prices
+            l_IT = state['consumption_prevision']  # on étudie le scénario à partir de la consommation minimale entre t et t+24h
+            lambdas = state["manager_signal"]
+            phw = state["hotwater_price_prevision"]
             problem = LpProblem("data_center", LpMinimize)
             alphas = [0 for i in range(self.env.nb_pdt)]
             alpha = [0 for i in range(self.env.nb_pdt)]
@@ -47,8 +46,8 @@ class DataCenterAgent:
 
             problem.solve()
             for i in range(48):
-                alpha[i] = alphas[i].value()
-            self.env.action_space = alpha
+
+            self.env.action_space = alphas
             return self.env.action_space.sample()
 
 
