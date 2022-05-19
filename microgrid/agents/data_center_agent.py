@@ -1,15 +1,15 @@
 import datetime
 from microgrid.environments.data_center.data_center_env import DataCenterEnv
-from microgrid.assets.data_center import DataCenter
+
 
 import pandas as pd
 from pulp import *
 import numpy as np
 
 class DataCenterAgent:
-    def __init__(self, env: DataCenterEnv, Dt : DataCenter):
+    def __init__(self, env: DataCenterEnv):
         self.env = env
-        self.Dt = Dt
+
 
     def take_decision(self,
                       state,
@@ -46,9 +46,9 @@ class DataCenterAgent:
 
             problem.solve()
             for i in range(48):
-
-            self.env.action_space = alphas
-            return self.env.action_space.sample()
+                alpha[i] = alphas[i].value()
+            self.env.action_space = alpha
+            return alpha
 
 
 if __name__ == "__main__":
