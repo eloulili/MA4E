@@ -2,71 +2,70 @@ import datetime
 from microgrid.environments.industrial.industrial_env import IndustrialEnv
 
 
+import datetime
+
+import pulp
+
+from microgrid.environments.industrial.industrial_env import IndustrialEnv
+
+from pulp import *
+import numpy as np
+
 class IndustrialAgent:
     def __init__(self, env: IndustrialEnv):
         self.env = env
 
-   def take_decision(self,
+    def take_decision(self,
                       state,
                       previous_state=None,
                       previous_action=None,
                       previous_reward=None):
-        
-        #données du manager
-        consumption_prevision = state.get("consumption_prevision") #la demande de consommation
-        soc = state.get("soc") #à utiliser au 2nd run, pas aujourd'hui
-        manager_signal = state.get("manager_signal") #les prix
-        date_time = state.get("datetime") #à utiliser au 2nd run, pas aujourd'hui
-        
-        #constantes batterie
-        pmax = self.env.battery.pmax #puissance maximale de la batterie
-        efficiency = self.env.battery.efficiency #rendement de la batterie, le même pour la charge et la décharge
-        capacity = self.env.battery.capacity #charge maximale
-        a_tdec = self.env.battery.soc #state[soc]
 
-        #constantes temps
+        conso_prevision= state.get("consumption_prevision")  # consomation prévue
+        manager_prix = state.get("manager_signal")  # les prix
 
-        delta_t = datetime.timedelta(minutes=30)
-        H = datetime.timedelta(hours=1)
-        T = self.env.nb_pdt #Nombre de périodes temporelles
-        liste_temps = [t for t in range(T)]
+        pmax = self.env.battery.pmax
+        efficacite_batterie = self.env.battery.efficiency
+        capacite_batterie = self.env.battery.capacity
 
-        #création du problème
-
-        prob = pl.LpProblem("industrial_site", pl.LpMinimize)
-
-        #définition des variables
-
-        a = pl.LpVariable.dicts("batterie_stock",liste_temps,0,capacity)
-        l_bat_plus = pl.LpVariable.dicts("l_batterie_plus",liste_temps,0)
-        l_bat_moins = pl.LpVariable.dicts("l_batterie_moins",liste_temps,0)
-        l_bat = pl.LpVariable.dicts("l_batterie",liste_temps)
-        l_tot = pl.LpVariable.dicts("l_demande_totale",liste_temps)
-
-        #Fonction objectif
-        
-        prob += pl.lpSum([l_tot[t] * manager_signal[t] * delta_t/H for t in liste_temps])
-
-        #contraintes
-
-        prob += a[0] == a_tdec
-        
-        for t in range(T):
-
-            prob += l_bat_plus[t] + l_bat_moins[t] <= pmax
-            prob += l_bat[t] == l_bat_plus[t] - l_bat_moins[t] #pas besoin de l_bat en variable pour la prochaine fois
-            prob += l_tot[t] == consumption_prevision[t] + l_bat[t] #pas besoin de l_tot en variable pour la prochaine fois
-            if t>0:
-                prob += a[t] == a[t-1] +(efficiency*l_bat_plus[t] - l_bat_moins[t]*1/efficiency)*delta_t/H
+        T = [t for t in range(24)]
+        stock_init = state.battery.initial_soc  # chargement initial de la batterie
+        stock = pulp.LpVariable.dicts("batterie_stock", T, 0, self.env.battery.capacity)
 
 
-        prob.solve()
 
-        result = self.env.action_space.sample()
-        for t in range(T):
-            result[t] = l_tot[t].value()
+        pb = pulp.LpProblem("industrial_site", pulp.LpMinimize)
 
-        return result
+
+        l_batterie_plus = pulp.LpVariable.dicts("l_batterie_plus", T, 0)
+        l_batterie_moins = pulp.LpVariable.dicts("l_batterie_moins", T, 0)
+        l_batterie = pulp.LpVariable.dicts("l_batterie", T)
+        l_tot = pulp.LpVariable.dicts("l_demande_totale", T)
+
+
+
+
+#contraintes
+        pb += stock[0] == stock_init, "égalité des stocks au temps 0"
+
+        for t in range(24):
+            pb += l_batterie[t] == -l_batterie_moins[t] + l_batterie_plus[t] , "égalité des utilisations de la batterie"
+            pb += l_batterie_moins[t] + l_batterie_plus[t] <= pmax ,"maximisation de l'utilisattion de la batterie"
+            pb += l_tot[t] == l_batterie[t] + conso_prevision[t] , "égalité entre la demande et l'arrivée d'énergie"
+            pb += stock[t] <= capacite_batterie, "maximisation de la capacité de la batterie"
+            if t > 0 :
+
+                pb += stock[t] == stock[t-1]  + delta_t*(l_batterie_plus[t]*efficacite_batterie + l_batterie_moins[t]/efficacite_batterie) , " égalité des stocks"
+
+#fonction obj
+        pb += pulp.lpSum([l_tot[t] * manager_prix[t] * delta_t for t in T])  # On somme les prix et on cherche à les minimiser
+
+        pb.solve()
+        decision = np.zeros(24)
+        for i in range(24):
+            decision[i] = l_tot[i]
+
+        return decision
 
 
 if __name__ == "__main__":
