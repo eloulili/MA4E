@@ -22,7 +22,7 @@ class DataCenterAgent:
             problem = LpProblem("data_center", LpMinimize)
             alphas = [0 for i in range(self.env.nb_pdt)]
             alpha = [0 for i in range(self.env.nb_pdt)]
-            for i in range(24):
+            for i in range(self.env.nb_pdt):
                 var_name = "alpha_" + str(i)
                 alphas[i] = LpVariable(var_name, 0.0, 1.0)
 
@@ -45,7 +45,7 @@ class DataCenterAgent:
                                range(self.env.nb_pdt)]), "objectif"
 
             problem.solve()
-            for i in range(48):
+            for i in range(self.env.nb_pdt):
                 alpha[i] = alphas[i].value()
        
             return alpha
