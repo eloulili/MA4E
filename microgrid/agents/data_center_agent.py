@@ -32,13 +32,13 @@ class DataCenterAgent:
             h_DC = [0 for i in range(self.env.nb_pdt)]
             li = [0 for i in range(self.env.nb_pdt)]
 
-            for t in range(self.env.nb_pdt):
+            for t in range(self.env.nb_pdt-1):
                 l_NF[t] = (1 + 1 / (self.env.EER * delta_t)) * l_IT[t]
                 h_r[t] = l_IT[t] * self.env.COP_CS / self.env.EER
                 l_HP[t] = alphas[t] * h_r[t] / ((self.env.COP_HP - 1) * delta_t)
                 h_DC[t] = self.env.COP_HP * delta_t * l_HP[t]
                 cons_name = "production limite en " + str(t)
-                problem += h_DC[t] <= self.env.max_transfert
+                problem += h_DC[t] + h_DC[t+1] <= self.env.max_transfert
                 li[t] = l_HP[t] + l_NF[t]
 
             problem += np.sum([lambdas[i] * (l_NF[i] + h_DC[i]) - phw[i] * h_DC[i] for i in
