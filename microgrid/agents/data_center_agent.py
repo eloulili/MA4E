@@ -2,7 +2,6 @@ import datetime
 from microgrid.environments.data_center.data_center_env import DataCenterEnv
 
 
-
 class DataCenterAgent:
     def __init__(self, env: DataCenterEnv):
         self.env = env
