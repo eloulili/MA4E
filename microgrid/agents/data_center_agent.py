@@ -47,7 +47,7 @@ class DataCenterAgent:
             problem.solve()
             for i in range(48):
                 alpha[i] = alphas[i].value()
-            self.env.action_space = alpha
+       
             return alpha
 
 
