@@ -2,6 +2,10 @@ import datetime
 from microgrid.environments.data_center.data_center_env import DataCenterEnv
 
 
+import pandas as pd
+from pulp import *
+import numpy as np
+
 class DataCenterAgent:
     def __init__(self, env: DataCenterEnv):
         self.env = env
@@ -15,21 +19,36 @@ class DataCenterAgent:
             l_IT = state['consumption_prevision']  # on étudie le scénario à partir de la consommation minimale entre t et t+24h
             lambdas = state["manager_signal"]
             phw = state["hotwater_price_prevision"]
+            problem = LpProblem("data_center", LpMinimize)
+            alphas = [0 for i in range(self.env.nb_pdt)]
             alpha = [0 for i in range(self.env.nb_pdt)]
+            for i in range(self.env.nb_pdt):
+                var_name = "alpha_" + str(i)
+                alphas[i] = LpVariable(var_name, 0.0, 1.0)
+
             l_NF = [0 for i in range(self.env.nb_pdt)]
             h_r = [0 for i in range(self.env.nb_pdt)]
+            l_HP = [0 for i in range(self.env.nb_pdt)]
+            h_DC = [0 for i in range(self.env.nb_pdt)]
+            li = [0 for i in range(self.env.nb_pdt)]
 
-            for t in range(self.env.nb_pdt):
+            for t in range(self.env.nb_pdt-1):
                 l_NF[t] = (1 + 1 / (self.env.EER * delta_t)) * l_IT[t]
                 h_r[t] = l_IT[t] * self.env.COP_CS / self.env.EER
-                max_alpha = self.env.max_transfert*(self.env.COP_HP -1)/(self.env.COP_HP * h_r[t])
-                if phw[t]>= lambdas[t]*datetime.timedelta(hours=1)/ (self.env.COP_HP * self.env.delta_t) and l_IT[t] > 0:
-                    if max_alpha>=0 :
-                        alpha[t] = min(max_alpha,1)
-                    else :
-                        alpha[t] = 0
-            return alpha
+                l_HP[t] = alphas[t] * h_r[t] / ((self.env.COP_HP - 1) * delta_t)
+                h_DC[t] = self.env.COP_HP * delta_t * l_HP[t]
+                cons_name = "production limite en " + str(t)
+                problem += h_DC[t] <= self.env.max_transfert
+                li[t] = l_HP[t] + l_NF[t]
 
+            problem += np.sum([lambdas[i] * (l_NF[i] + h_DC[i]) - phw[i] * h_DC[i] for i in
+                               range(self.env.nb_pdt)]), "objectif"
+
+            problem.solve()
+            for i in range(self.env.nb_pdt):
+                alpha[i] = alphas[i].value()
+       
+            return alpha
 
 
 
@@ -53,6 +72,4 @@ if __name__ == "__main__":
             break
         print(f"action: {action}, reward: {reward}, cumulative reward: {cumulative_reward}")
         print("State: {}".format(state))
-
-
 
